@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bridges>=3.5.2",
     "fastapi>=0.146.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.2",

@@ -1,7 +1,7 @@
 import heapq
 import math
 from itertools import count
-
+import bridges
 
 class Node:
     def __init__(self, row, col, height=0, is_wall=False):
@@ -149,31 +149,36 @@ class Grid:
         return "\n".join(lines)
 
 
-#if __name__ == "__main__":
+if __name__ == "__main__":
+    bridges = Bridges(1, "krintalbogdan", "1053813652752")
+
+'''
+if __name__ == "__main__":
     # Numbers are heights; None = wall.
     # Edge cost = |height difference| between neighbors.
-    #heights = [
-        #[0, 1, 2, 9, 9],
-        #[5, None, 3, 9, 9],
-        #[6, None, 4, 5, 6],
-        #[9, 9, None, None, 7],
-        #[9, 9, 9, 8, 8],
-    #]
+    heights = [
+        [0, 1, 2, 9, 9],
+        [5, None, 3, 9, 9],
+        [6, None, 4, 5, 6],
+        [9, 9, None, None, 7],
+        [9, 9, 9, 8, 8],
+    ]
 
-    #grid = Grid(heights)
-    #start, goal = (0, 0), (4, 4)
+    grid = Grid(heights)
+    start, goal = (0, 0), (4, 4)
 
-    #coords = grid.shortest_path(start, goal)
-    #if not coords:
-        #print("No path found.")
-    #else:
-        #end = grid[goal]
-        #path = grid.path_to(goal)
-        #print(f"Shortest cost {start} -> {goal}: {end.cost}")
-        #print("Path coordinates:", coords)
-        #print("Step costs:",
-        #      [a.edge_cost(b) for a, b in zip(path, path[1:])])
-        #print()
-        #print(grid.render(path))
-        #print()
-        #print("Goal node:", end)
+    coords = grid.shortest_path(start, goal)
+    if not coords:
+        print("No path found.")
+    else:
+        end = grid[goal]
+        path = grid.path_to(goal)
+        print(f"Shortest cost {start} -> {goal}: {end.cost}")
+        print("Path coordinates:", coords)
+        print("Step costs:",
+              [a.edge_cost(b) for a, b in zip(path, path[1:])])
+        print()
+        print(grid.render(path))
+        print()
+        print("Goal node:", end)
+'''
