@@ -1,0 +1,192 @@
+#Heuristic: |height(node) - height(goal)|. Any path from a node to the goal has
+#to climb or descend by at least that much in total, so the heuristic never
+#overestimates and never drops by more than an edge's cost
+
+
+
+import heapq
+import math
+from itertools import count
+
+
+class Node:
+    def __init__(self, row, col, height=0, is_wall=False):
+        self.row = row
+        self.col = col
+        self.height = height          # used to compute edge costs
+        self.is_wall = is_wall        # impassable if True
+
+        # A* state
+        self.cost = math.inf          # g: best-known cost from the start
+        self.heuristic = 0            # h: estimated cost from here to the goal
+        self.previous = None          # the Node we got our cost from
+        self.settled = False          # True once our cost is final
+
+    @property
+    def estimate(self):
+        #f = g + h: estimated total cost of a path through this node.
+        return self.cost + self.heuristic
+
+    def edge_cost(self, other):
+        #Cost of moving between this node and a neighbor.
+        return abs(self.height - other.height)
+
+    def reset(self):
+        #Clear search state so the grid can be reused for another search.
+        self.cost = math.inf
+        self.heuristic = 0
+        self.previous = None
+        self.settled = False
+
+    @property
+    def pos(self):
+        return (self.row, self.col)
+
+    def __repr__(self):
+        prev = self.previous.pos if self.previous else None
+        state = "settled" if self.settled else "unsettled"
+        return (f"Node({self.row},{self.col} h={self.height} "
+                f"cost={self.cost} est={self.estimate} from={prev} {state})")
+
+
+class Grid:
+    def __init__(self, heights, walls=None):
+        walls = set(walls or [])
+        self.nodes = [
+            [Node(r, c,
+                  height=(h if h is not None else 0),
+                  is_wall=(h is None or (r, c) in walls))
+             for c, h in enumerate(row)]
+            for r, row in enumerate(heights)
+        ]
+        self.rows = len(self.nodes)
+        self.cols = len(self.nodes[0]) if self.rows else 0
+
+    def __getitem__(self, pos):
+        r, c = pos
+        return self.nodes[r][c]
+
+    def in_bounds(self, r, c):
+        return 0 <= r < self.rows and 0 <= c < self.cols
+
+    def neighbors(self, node, diagonal=False):
+        steps = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        if diagonal:
+            steps += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        for dr, dc in steps:
+            r, c = node.row + dr, node.col + dc
+            if self.in_bounds(r, c) and not self.nodes[r][c].is_wall:
+                yield self.nodes[r][c]
+
+    def reset(self):
+        for row in self.nodes:
+            for node in row:
+                node.reset()
+
+    @staticmethod
+    def heuristic(node, goal):
+        """Admissible, consistent estimate of the cost from node to goal."""
+        return abs(node.height - goal.height)
+
+    def astar(self, start, goal, diagonal=False):
+        self.reset()
+        source, target = self[start], self[goal]
+        if source.is_wall:
+            raise ValueError(f"Start {start} is a wall")
+        if target.is_wall:
+            return None
+
+        source.cost = 0
+        source.heuristic = self.heuristic(source, target)
+        tiebreak = count()            # avoids comparing Node objects in the heap
+        # Order by f, then prefer larger g (deeper nodes) to break ties.
+        heap = [(source.estimate, 0, next(tiebreak), source)]
+
+        while heap:
+            _, _, _, current = heapq.heappop(heap)
+            if current.settled:
+                continue              # stale heap entry
+            current.settled = True
+
+            if current is target:
+                return target
+
+            for nb in self.neighbors(current, diagonal):
+                if nb.settled:
+                    continue
+                new_cost = current.cost + current.edge_cost(nb)
+                if new_cost < nb.cost:
+                    nb.cost = new_cost
+                    nb.heuristic = self.heuristic(nb, target)
+                    nb.previous = current
+                    heapq.heappush(
+                        heap, (nb.estimate, -new_cost, next(tiebreak), nb))
+
+        return None
+
+    def path_to(self, goal):
+        #Walk `previous` pointers back from goal. Call after astar().
+        node = self[goal]
+        if node.cost == math.inf:
+            return []
+        path = []
+        while node is not None:
+            path.append(node)
+            node = node.previous
+        return path[::-1]
+
+    def shortest_path(self, start, goal, diagonal=False):
+
+        #Run A* from `start` to `goal`, both (row, col), and return the path as a
+        #list of (row, col) coordinates, start to goal inclusive. Returns [] if
+        #the goal can't be reached.
+
+        if self.astar(start, goal, diagonal) is None:
+            return []
+        return [node.pos for node in self.path_to(goal)]
+
+    def render(self, path=()):
+        on_path = {n.pos for n in path}
+        lines = []
+        for row in self.nodes:
+            cells = []
+            for n in row:
+                if n.is_wall:
+                    cells.append("  ##")
+                elif n.pos in on_path:
+                    cells.append(f" *{n.height:>2}")
+                else:
+                    cells.append(f"{n.height:>4}")
+            lines.append("".join(cells))
+        return "\n".join(lines)
+
+
+#if __name__ == "__main__":
+    # Numbers are heights; None = wall.
+    # Edge cost = |height difference| between neighbors.
+    #heights = [
+        #[0, 1, 2, 9, 9],
+        #[5, None, 3, 9, 9],
+        #[6, None, 4, 5, 6],
+        #[9, 9, None, None, 7],
+        #[9, 9, 9, 8, 8],
+    #]
+
+    #grid = Grid(heights)
+    #start, goal = (0, 0), (4, 4)
+
+    #coords = grid.shortest_path(start, goal)
+    #if not coords:
+        #print("No path found.")
+    #else:
+        #path = grid.path_to(goal)
+        #settled = sum(n.settled for row in grid.nodes for n in row)
+        #print(f"Shortest cost {start} -> {goal}: {grid[goal].cost}")
+        #print("Path coordinates:", coords)
+        #print("Step costs:",
+              #[a.edge_cost(b) for a, b in zip(path, path[1:])])
+        #print("Nodes settled:", settled)
+        #print()
+        #print(grid.render(path))
+        #print()
+        #print("Goal node:", grid[goal])
