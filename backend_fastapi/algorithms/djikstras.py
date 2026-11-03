@@ -1,7 +1,11 @@
 import heapq
 import math
 from itertools import count
-import bridges
+import ee
+import numpy as np
+from bridges import Bridges
+from bridges.data_src_dependent import data_source
+
 
 class Node:
     def __init__(self, row, col, height=0, is_wall=False):
@@ -149,10 +153,102 @@ class Grid:
         return "\n".join(lines)
 
 
+class SRTMElevationData:
+
+    def __init__(self, bbox, scale_meters=400):
+        min_lat, min_lon, max_lat, max_lon = bbox
+        region = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+
+        srtm = (
+            ee.Image("USGS/SRTMGL1_003")
+            .select("elevation")
+            .reproject(crs="EPSG:4326", scale=scale_meters)
+        )
+
+        rect = srtm.sampleRectangle(region=region, defaultValue=0)
+        self.data = rect.get("elevation").getInfo()
+        self.rows = len(self.data)
+        self.cols = len(self.data[0]) if self.rows > 0 else 0
+        self.xll = min_lon
+        self.yll = min_lat
+        self.cellsize = (max_lat - min_lat) / self.rows
+
+
 if __name__ == "__main__":
-    bridges = Bridges(1, "krintalbogdan", "1053813652752")
+    ee.Initialize(project="vocal-etching-286420")
+
+    # Decrease scale_meters (down to 30) for smaller land equivalent length per cell
+    ele_obj = SRTMElevationData(
+        [
+            #41.03133177632377,
+            #-98.02593749997456,
+            42.476746000000000, 
+            -96.98138000000000,
+            42.508577297430456,
+            -96.94531249997696,
+        ],
+        scale_meters=10,
+    )
+    print("Width: " + str(ele_obj.cols))
+    print("Height: " + str(ele_obj.rows))
+    print(
+        "Coordinate of lower left corner: "
+        + str(ele_obj.xll)
+        + ", "
+        + str(ele_obj.yll)
+    )
+    print("Spatial resolution: " + str(ele_obj.cellsize))
+    converted_heights = [
+        [0 for _ in range(ele_obj.cols)] for _ in range(ele_obj.rows)
+    ]
+    
+    for i in range(0, ele_obj.rows):
+        for j in range(0, ele_obj.cols):
+            converted_heights[i][j] = ele_obj.data[i][j]
+
+    # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
+    # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
+    start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    grid = Grid(converted_heights)
+    coords = grid.shortest_path(start, goal)
+    print(grid.cols, ' ', grid.rows)
+    
+
 
 '''
+
+if __name__ == "__main__":
+    dridges = Bridges(1, "krintalbogdan", "1053813652752")
+
+    ele_obj = data_source.get_elevation_data([41.03133177632377, -98.02593749997456, 42.508577297430456, -96.94531249997696])
+    print("Width: "+str(ele_obj.cols))
+    print("Height: "+str(ele_obj.rows))
+    print("Coordinate of lower left corner: "+str(ele_obj.xll)+", "+str(ele_obj.yll))
+    print("Spatial resolution: " + str(ele_obj.cellsize))
+    converted_heights = [[0 for _ in range(ele_obj.cols)] for _ in range(ele_obj.rows)]
+    for i in range(0, ele_obj.rows):
+        for j in range(0, ele_obj.cols):
+            converted_heights[i][j] = ele_obj.data[i][j]
+    
+    start, goal = (1, 1), (87, 63)
+    grid = Grid(converted_heights)
+    coords = grid.shortest_path(start, goal)
+    if not coords:
+        print("No path found.")
+    else:
+        end = grid[goal]
+        path = grid.path_to(goal)
+        print(f"Shortest cost {start} -> {goal}: {end.cost}")
+        print("Path coordinates:", coords)
+        print("Step costs:",
+                [a.edge_cost(b) for a, b in zip(path, path[1:])])
+        print()
+        print(grid.render(path))
+        print()
+        print("Goal node:", end)
+
+
+
 if __name__ == "__main__":
     # Numbers are heights; None = wall.
     # Edge cost = |height difference| between neighbors.
