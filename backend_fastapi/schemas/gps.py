@@ -20,8 +20,8 @@ class CompleteStoryNodeResponse(StoryNodeBase):
 '''
 
 class CreateJob(BaseModel):
-    from_coord: float
-    to_coord: float
+    from_coord: list[float]
+    to_coord: list[float]
     algorithm: str
 
 class CreateJobResponse(BaseModel):
@@ -32,7 +32,5 @@ class ProcessQuery(BaseModel):
 
 class QueryResponse(BaseModel):
     status: str
+    path: list[list[int]]
 
-
-class FileRequest(BaseModel):
-    id: int
