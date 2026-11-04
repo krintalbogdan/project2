@@ -200,7 +200,14 @@ def execute_dijkstra(from_coord, to_coord):
 
     # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
     # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
-    start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    if (from_coord[0] < to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    if (from_coord[0] > to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (ele_obj.rows - 2, 1), (1, ele_obj.cols - 2)
+    if (from_coord[0] < to_coord[0] and from_coord[1] < to_coord[1]):
+        start, goal = (1, ele_obj.cols - 2), (ele_obj.rows - 2, 1)
+    if (from_coord[0] > to_coord[0] and from_coord[1] < to_coord[1]):
+            start, goal = (ele_obj.rows - 2, ele_obj.cols - 2), (1, 1)
     grid = Grid(converted_heights)
     coords = grid.shortest_path(start, goal)
     toReturn = []
@@ -214,12 +221,16 @@ if __name__ == "__main__":
     ee.Initialize(project="vocal-etching-286420")
 
     # Decrease scale_meters (down to 30) for smaller land equivalent length per cell
+    from_coord = [42.508577297430456, 
+               -96.98138000000000]
+    to_coord = [42.476746000000000,
+                     -96.94531249997696]
     ele_obj = SRTMElevationData(
         [
-            42.476746000000000, 
-           -96.98138000000000,
-            42.508577297430456,
-             -96.94531249997696,
+            from_coord[0], 
+           from_coord[1],
+            to_coord[0],
+             to_coord[1],
         ],
         scale_meters=30,
     )
@@ -242,7 +253,14 @@ if __name__ == "__main__":
 
     # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
     # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
-    start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    if (from_coord[0] < to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    if (from_coord[0] > to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (ele_obj.rows - 2, 1), (1, ele_obj.cols - 2)
+    if (from_coord[0] < to_coord[0] and from_coord[1] < to_coord[1]):
+        start, goal = (1, ele_obj.cols - 2), (ele_obj.rows - 2, 1)
+    if (from_coord[0] > to_coord[0] and from_coord[1] < to_coord[1]):
+            start, goal = (ele_obj.rows - 2, ele_obj.cols - 2), (1, 1)
     grid = Grid(converted_heights)
     coords = grid.shortest_path(start, goal)
 
