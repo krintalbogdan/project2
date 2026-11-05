@@ -28,6 +28,11 @@ function App() {
   const [start, setStart] = useState<MapPoint | null>(null)//MapPoint | null means "a location OR no selection yet.
   const [end, setEnd] = useState<MapPoint | null>(null)
   const [error, setError] = useState('')
+  const [algorithm, setAlgorithm] = useState('astar')
+  //show the backend's reply on the page.
+  const [apiMessage, setApiMessage] = useState('')
+  //track whether a request is running to prevent repeated clicks.
+  const [loading, setLoading] = useState(false)
 
   function selectPoint(point: MapPoint) {//runs when mapclicks gives clicked location
     if (!start) {
@@ -52,6 +57,48 @@ function App() {
       setError('')
     }
 
+  }
+
+  async function findRoute(){//this function hands task to be sent to backend
+    if (!start || !end) {
+      setError('Select both points first.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setApiMessage('Sending request...')
+
+    try{
+      // fetch sends an HTTP request, and await waits for the response without freezing the page.
+      const response = await fetch(
+      'http://127.0.0.1:8000/api/clone/create',{
+        method: 'POST',//standard syntax for HTTP request
+        headers: {
+          'Content-Type': 'application/json',
+        },
+
+        //JSON.stringify converts this object into JSON text.
+        body: JSON.stringify({
+          from_coord: [start.lat, start.lng],
+          to_coord: [end.lat, end.lng],
+          algorithm: algorithm,
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      throw new Error(`Backend returned HTTP ${response.status}`)
+    }
+
+    const job = await response.json()//should contain job ID
+    setApiMessage(`Job created with ID: ${job.id}`)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Request failed', )//this is to handle connection errors
+      setApiMessage('')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function resetPoints() {
@@ -81,6 +128,32 @@ function App() {
       <button type="button" onClick={resetPoints}>
         Reset points
       </button>
+
+      {/* Let the user choose which algorithm to run in a dropdown menu. */}
+      <p>
+        <label htmlFor="algorithm">Algorithm: </label>
+
+        <select
+          id="algorithm"
+          value={algorithm}
+          onChange={(event) => setAlgorithm(event.target.value)}
+        >
+          <option value="astar">A*</option>
+          <option value="dijkstra">Dijkstra</option>
+        </select>
+      </p>
+
+      {/* Enable the button only when both points are selected. */}
+      <button
+        type="button"
+        onClick={findRoute}
+        disabled={!start || !end || loading}
+      >
+        {loading ? 'Sending...' : 'Find Route'}
+      </button>
+
+      {/* Display the API request result. */}
+      <p role="status">{apiMessage}</p>
 
       {/* toFixed(5) displays a number with five decimal places. */}
       <p>
