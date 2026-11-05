@@ -1,13 +1,114 @@
-import { MapContainer, TileLayer } from 'react-leaflet'
+import { useState } from 'react'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents,} from 'react-leaflet'
+import { latLng } from 'leaflet' //latLng lets us calculate distances between coordinates
 import 'leaflet/dist/leaflet.css'
 
+type MapPoint = {
+  lat: number
+  lng: number
+}
+
+type MapClicksProps = {//this prop is information passed into React
+  onSelect: (point: MapPoint) => void
+}
+
+function MapClicks({ onSelect }: MapClicksProps) {
+  useMapEvents({
+    click(event) {
+      //event.latlng contains the location that was clicked.
+      //wrap() keeps longitude within the standard range if the user drags across repeated copies of the world.
+      const point = event.latlng.wrap()
+      onSelect({ lat: point.lat, lng: point.lng })//pass coordinates to function
+    },
+  })
+  return null
+}
+
 function App() {
+  const [start, setStart] = useState<MapPoint | null>(null)//MapPoint | null means "a location OR no selection yet.
+  const [end, setEnd] = useState<MapPoint | null>(null)
+  const [error, setError] = useState('')
+
+  function selectPoint(point: MapPoint) {//runs when mapclicks gives clicked location
+    if (!start) {
+      setStart(point)
+      setError('')
+      return
+    }
+    if (!end) {
+      const meters = latLng(start.lat, start.lng).distanceTo(latLng(point.lat, point.lng), )//use distanceTo function to calculate distance
+
+      if (meters > 2 * 1609.344) {//1609.344 is number of meters in 1 mile
+        setError('Destination must be within 2 miles of the start. Try closer.')
+        return
+      }
+
+      if (meters < 1) {//this is just to prevent accidently selecting the same location twice
+        setError('Choose a destination at least 1 meter from the start.')
+        return
+      }
+
+      setEnd(point)
+      setError('')
+    }
+
+  }
+
+  function resetPoints() {
+    setStart(null)
+    setEnd(null)
+    setError('')
+  }//reset function for reset button
+
+  //remember this format "condition ? valueIfTrue : valueIfFalse"
+  const distanceMiles =//if start and end exists calculate teh distance in miles
+    start && end ? latLng(start.lat, start.lng).distanceTo(latLng(end.lat, end.lng)) /1609.344
+      : null
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Gator PathFinders</h1>
 
-      <p>Choose a starting point and destination to plan your route.</p>
+      {/* Change the instructions based on what is selected. */}
+      <p>
+        {!start
+          ? 'Click the map to choose your starting point.'
+          : !end
+            ? 'Now click a destination within 2 miles.'
+            : 'Both points selected. Click Reset to choose again.'}
+      </p>
 
+      <button type="button" onClick={resetPoints}>
+        Reset points
+      </button>
+
+      {/* toFixed(5) displays a number with five decimal places. */}
+      <p>
+        <strong>Start: </strong>
+        {start
+          ? `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}`
+          : 'Not selected'}
+      </p>
+
+      <p>
+        <strong>Destination: </strong>
+        {end
+          ? `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`
+          : 'Not selected'}
+      </p>
+
+      {distanceMiles !== null && (
+        <p>Straight-line distance: {distanceMiles.toFixed(2)} miles</p>
+      )}
+
+      {/* Show why a destination was rejected. */}
+      {error && (
+        <p role="alert" style={{ color: '#b91c1c' }}>
+          {error}
+        </p>
+      )}
+
+      {/* Start the map in Gainesville and give it a visible height. */}
       <MapContainer //creates the map
         center={[29.6516, -82.3248]}
         zoom={13}
@@ -17,6 +118,33 @@ function App() {
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
+
+        {/* When the map is clicked, MapClicks calls selectPoint. */}
+        <MapClicks onSelect={selectPoint} />
+
+        {/* Show the green circle only after a start is selected. Learned syntax from researching on google*/}
+        {start && (
+          <CircleMarker
+            center={start}
+            radius={10}
+            pathOptions={{ color: 'green', fillOpacity: 0.8 }}
+          >
+            <Tooltip permanent>Start</Tooltip>
+          </CircleMarker>
+        )}
+
+        {/* Show the red circle only after a destination is selected. */}
+        {end && (
+          <CircleMarker
+            center={end}
+            radius={10}
+            pathOptions={{ color: 'red', fillOpacity: 0.8 }}
+          >
+            <Tooltip permanent>Destination</Tooltip>
+          </CircleMarker>
+        )}
+
+
       </MapContainer>
     </div>
   )
