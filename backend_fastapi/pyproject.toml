@@ -5,9 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bridges>=3.5.2",
+    "earthengine-api>=1.7.50",
     "fastapi>=0.146.0",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.2",
+    "seaborn>=0.13.2",
     "sqlalchemy>=2.1.6",
     "uvicorn>=0.54.0",
 ]

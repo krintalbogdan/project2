@@ -8,6 +8,7 @@ class gpsJob(Base):
     __tablename__ = 'gpsJob'
     id:int = Column(Integer, unique=True, primary_key=True)
     status:str = Column(String(10), unique=False)
-    from_coord = Column('from', REAL, unique=False, nullable=False)
-    to_coord = Column(REAL, unique=False, nullable=False)
+    from_coord = Column(JSON, default=[])
+    to_coord = Column(JSON, default=[])
     algorithm = Column(String(10), unique=False)
+    path = Column(JSON, default=[])

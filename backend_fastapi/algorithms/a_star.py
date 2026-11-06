@@ -5,6 +5,13 @@
 import heapq
 import math
 from itertools import count
+import ee
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import seaborn as sns
+from bridges import Bridges
+from bridges.data_src_dependent import data_source
 
 GAINESVILLE_FL = (29.6516, -82.3248)  # center of cell (0, 0)
 CELL_SIZE_M = 30                      # meters between cell centers
@@ -189,38 +196,108 @@ class Grid:
         return "\n".join(lines)
 
 
-#if __name__ == "__main__":
-    # heights; None = wall
-    #heights = [
-        #[0, 1, 2, 9, 9],
-        #[5, None, 3, 9, 9],
-        #[6, None, 4, 5, 6],
-        #[9, 9, None, None, 7],
-        #[9, 9, 9, 8, 8],
-    #]
+class SRTMElevationData:
 
-    #grid = Grid(heights)
-    #start, goal = (0, 0), (4, 4)
+    def __init__(self, bbox, scale_meters=400):
+        min_lat, min_lon, max_lat, max_lon = bbox
+        region = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
 
-    #coords = grid.shortest_path(start, goal)
-    #if not coords:
-        #print("No path found.")
-    #else:
-        #path = grid.path_to(goal)
-        #settled = sum(n.settled for row in grid.nodes for n in row)
-        #print(f"Shortest cost {start} -> {goal}: {grid[goal].cost}")
-        #print("Path coordinates:", coords)
-        #print("Step costs:",
-              #[a.edge_cost(b) for a, b in zip(path, path[1:])])
-        #print("Nodes settled:", settled)
-        #print()
-        #print(grid.render(path))
-        #print()
-        #print("Goal node:", grid[goal])
+        srtm = (
+            ee.Image("USGS/SRTMGL1_003")
+            .select("elevation")
+            .reproject(crs="EPSG:4326", scale=scale_meters)
+        )
 
-        #start_ll = grid.cell_to_latlon(start)
-        #goal_ll = grid.cell_to_latlon(goal)
-        #print()
-        #print(f"Lat/lon path ({CELL_SIZE_M} m cells):")
-        #for lat, lon in grid.shortest_path_latlon(start_ll, goal_ll):
-            #print(f"  ({lat:.6f}, {lon:.6f})")
+        rect = srtm.sampleRectangle(region=region, defaultValue=0)
+        self.data = rect.get("elevation").getInfo()
+        self.rows = len(self.data)
+        self.cols = len(self.data[0]) if self.rows > 0 else 0
+        self.xll = min_lon
+        self.yll = min_lat
+        self.cellsize = (max_lat - min_lat) / self.rows
+
+
+def execute_astar(from_coord, to_coord):
+    ee.Initialize(project="vocal-etching-286420")
+
+    # Decrease scale_meters (down to 30) for smaller land equivalent length per cell
+    ele_obj = SRTMElevationData(
+        [
+            from_coord[0],
+            from_coord[1],
+            to_coord[0],
+            to_coord[1],
+        ],
+        scale_meters=30,
+    )
+    converted_heights = np.empty((ele_obj.rows, ele_obj.cols), dtype=np.int32)
+
+    for i in range(0, ele_obj.rows):
+        for j in range(0, ele_obj.cols):
+            converted_heights[i][j] = ele_obj.data[i][j]
+
+    # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
+    # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
+    if (from_coord[0] < to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    if (from_coord[0] > to_coord[0] and from_coord[1] > to_coord[1]):
+        start, goal = (ele_obj.rows - 2, 1), (1, ele_obj.cols - 2)
+    if (from_coord[0] < to_coord[0] and from_coord[1] < to_coord[1]):
+        start, goal = (1, ele_obj.cols - 2), (ele_obj.rows - 2, 1)
+    if (from_coord[0] > to_coord[0] and from_coord[1] < to_coord[1]):
+            start, goal = (ele_obj.rows - 2, ele_obj.cols - 2), (1, 1)
+    grid = Grid(converted_heights)
+    coords = grid.shortest_path(start, goal)
+    toReturn = []
+
+    for elem in grid.path_to(goal):
+        toReturn.append([elem.col, elem.row])
+
+    return toReturn
+
+if __name__ == "__main__":
+    ee.Initialize(project="vocal-etching-286420")
+
+    # Decrease scale_meters (down to 30) for smaller land equivalent length per cell
+    ele_obj = SRTMElevationData(
+        [
+            42.476746000000000,
+            -96.98138000000000,
+            42.508577297430456,
+            -96.94531249997696,
+        ],
+        scale_meters=30,
+    )
+    print("Width: " + str(ele_obj.cols))
+    print("Height: " + str(ele_obj.rows))
+    print(
+        "Coordinate of lower left corner: "
+        + str(ele_obj.xll)
+        + ", "
+        + str(ele_obj.yll)
+    )
+    print("Spatial resolution: " + str(ele_obj.cellsize))
+    converted_heights = np.empty((ele_obj.rows, ele_obj.cols), dtype=np.int32)
+
+
+    for i in range(0, ele_obj.rows):
+        for j in range(0, ele_obj.cols):
+            converted_heights[i][j] = ele_obj.data[i][j]
+    print("array created!")
+
+    # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
+    # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
+    start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
+    grid = Grid(converted_heights)
+    coords = grid.shortest_path(start, goal)
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+    sns.heatmap(converted_heights, cmap='viridis')
+
+    for elem in grid.path_to(goal):
+        rect = patches.Rectangle((elem.col, elem.row), 1, 1, linewidth=1, edgecolor='black', facecolor='black')
+        ax.add_patch(rect)
+        print(elem.col, " ", elem.row)
+
+
+    plt.show()
