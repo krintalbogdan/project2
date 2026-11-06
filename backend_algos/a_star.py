@@ -1,38 +1,38 @@
-#Heuristic: |height(node) - height(goal)|. Any path from a node to the goal has
-#to climb or descend by at least that much in total, so the heuristic never
-#overestimates and never drops by more than an edge's cost
-
-
+# A* on a 2D grid of Node objects.
+# Edge cost = height difference between neighbors.
+# Heuristic = height difference to the goal (never overestimates).
 
 import heapq
 import math
 from itertools import count
+
+GAINESVILLE_FL = (29.6516, -82.3248)  # center of cell (0, 0)
+CELL_SIZE_M = 30                      # meters between cell centers
+METERS_PER_DEG_LAT = 111_320
 
 
 class Node:
     def __init__(self, row, col, height=0, is_wall=False):
         self.row = row
         self.col = col
-        self.height = height          # used to compute edge costs
-        self.is_wall = is_wall        # impassable if True
+        self.height = height
+        self.is_wall = is_wall
 
-        # A* state
-        self.cost = math.inf          # g: best-known cost from the start
-        self.heuristic = 0            # h: estimated cost from here to the goal
-        self.previous = None          # the Node we got our cost from
-        self.settled = False          # True once our cost is final
+        # search state
+        self.cost = math.inf    # g: cost from start
+        self.heuristic = 0      # h: guess of cost to goal
+        self.previous = None    # node we got our cost from
+        self.settled = False    # cost is final
 
+    # f = g + h
     @property
     def estimate(self):
-        #f = g + h: estimated total cost of a path through this node.
         return self.cost + self.heuristic
 
     def edge_cost(self, other):
-        #Cost of moving between this node and a neighbor.
         return abs(self.height - other.height)
 
     def reset(self):
-        #Clear search state so the grid can be reused for another search.
         self.cost = math.inf
         self.heuristic = 0
         self.previous = None
@@ -50,7 +50,11 @@ class Node:
 
 
 class Grid:
-    def __init__(self, heights, walls=None):
+    # heights: 2D list, None = wall
+    # origin: (lat, lon) of cell (0, 0), the top-left / north-west cell
+    # rows run south, columns run east
+    def __init__(self, heights, walls=None, origin=GAINESVILLE_FL,
+                 cell_size_m=CELL_SIZE_M):
         walls = set(walls or [])
         self.nodes = [
             [Node(r, c,
@@ -61,6 +65,12 @@ class Grid:
         ]
         self.rows = len(self.nodes)
         self.cols = len(self.nodes[0]) if self.rows else 0
+
+        # meters -> degrees at the origin's latitude (fine for small areas)
+        self.origin = origin
+        self.lat_step = cell_size_m / METERS_PER_DEG_LAT
+        self.lon_step = cell_size_m / (
+            METERS_PER_DEG_LAT * math.cos(math.radians(origin[0])))
 
     def __getitem__(self, pos):
         r, c = pos
@@ -85,9 +95,9 @@ class Grid:
 
     @staticmethod
     def heuristic(node, goal):
-        """Admissible, consistent estimate of the cost from node to goal."""
         return abs(node.height - goal.height)
 
+    # start, goal: (row, col). Returns goal node, or None if unreachable.
     def astar(self, start, goal, diagonal=False):
         self.reset()
         source, target = self[start], self[goal]
@@ -98,14 +108,14 @@ class Grid:
 
         source.cost = 0
         source.heuristic = self.heuristic(source, target)
-        tiebreak = count()            # avoids comparing Node objects in the heap
-        # Order by f, then prefer larger g (deeper nodes) to break ties.
+        tiebreak = count()
+        # heap order: lowest f, then deepest g, then insertion order
         heap = [(source.estimate, 0, next(tiebreak), source)]
 
         while heap:
             _, _, _, current = heapq.heappop(heap)
             if current.settled:
-                continue              # stale heap entry
+                continue  # stale entry
             current.settled = True
 
             if current is target:
@@ -124,8 +134,8 @@ class Grid:
 
         return None
 
+    # follow previous pointers back from goal; call after astar()
     def path_to(self, goal):
-        #Walk `previous` pointers back from goal. Call after astar().
         node = self[goal]
         if node.cost == math.inf:
             return []
@@ -135,15 +145,33 @@ class Grid:
             node = node.previous
         return path[::-1]
 
+    # (row, col) in, list of (row, col) out; [] if unreachable
     def shortest_path(self, start, goal, diagonal=False):
-
-        #Run A* from `start` to `goal`, both (row, col), and return the path as a
-        #list of (row, col) coordinates, start to goal inclusive. Returns [] if
-        #the goal can't be reached.
-
         if self.astar(start, goal, diagonal) is None:
             return []
         return [node.pos for node in self.path_to(goal)]
+
+    # (row, col) -> (lat, lon) of the cell center
+    def cell_to_latlon(self, pos):
+        r, c = pos
+        lat0, lon0 = self.origin
+        return (lat0 - r * self.lat_step, lon0 + c * self.lon_step)
+
+    # (lat, lon) -> (row, col) of the cell containing it
+    def latlon_to_cell(self, lat, lon):
+        lat0, lon0 = self.origin
+        r = round((lat0 - lat) / self.lat_step)
+        c = round((lon - lon0) / self.lon_step)
+        if not self.in_bounds(r, c):
+            raise ValueError(f"({lat}, {lon}) is outside the grid")
+        return (r, c)
+
+    # (lat, lon) in, list of (lat, lon) out; [] if unreachable
+    def shortest_path_latlon(self, start, goal, diagonal=False):
+        start_cell = self.latlon_to_cell(*start)
+        goal_cell = self.latlon_to_cell(*goal)
+        return [self.cell_to_latlon(p)
+                for p in self.shortest_path(start_cell, goal_cell, diagonal)]
 
     def render(self, path=()):
         on_path = {n.pos for n in path}
@@ -162,8 +190,7 @@ class Grid:
 
 
 #if __name__ == "__main__":
-    # Numbers are heights; None = wall.
-    # Edge cost = |height difference| between neighbors.
+    # heights; None = wall
     #heights = [
         #[0, 1, 2, 9, 9],
         #[5, None, 3, 9, 9],
@@ -190,3 +217,10 @@ class Grid:
         #print(grid.render(path))
         #print()
         #print("Goal node:", grid[goal])
+
+        #start_ll = grid.cell_to_latlon(start)
+        #goal_ll = grid.cell_to_latlon(goal)
+        #print()
+        #print(f"Lat/lon path ({CELL_SIZE_M} m cells):")
+        #for lat, lon in grid.shortest_path_latlon(start_ll, goal_ll):
+            #print(f"  ({lat:.6f}, {lon:.6f})")
