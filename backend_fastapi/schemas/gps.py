@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 '''
@@ -32,5 +32,5 @@ class ProcessQuery(BaseModel):
 
 class QueryResponse(BaseModel):
     status: str
-    path: list[list[int]]
+    path: list[Any]
 

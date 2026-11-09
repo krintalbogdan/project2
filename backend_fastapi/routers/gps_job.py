@@ -66,6 +66,14 @@ def process_query(
     
     fetched_job = db.get(gpsJob, request.id)
 
+    try:
+        path_data = json.loads(fetched_job.path) if fetched_job.path else []
+    except (TypeError, json.JSONDecodeError):
+        path_data = []
+        
+    if path_data and not isinstance(path_data[0], list):
+        path_data = [path_data]
+
     return {
         "id": fetched_job.id,
         "status": fetched_job.status,
