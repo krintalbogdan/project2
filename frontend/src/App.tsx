@@ -3,6 +3,18 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMapEvents,
 import { latLng } from 'leaflet' //latLng lets us calculate distances between coordinates
 import 'leaflet/dist/leaflet.css'
 
+
+
+const GAINESVILLE_FL = [29.6516, -82.3248]; // center of cell (0, 0)
+const CELL_SIZE_M = 30;                     // meters between cell centers
+const METERS_PER_DEG_LAT = 111320;
+
+const LAT_STEP = CELL_SIZE_M / METERS_PER_DEG_LAT;
+const LNG_STEP = CELL_SIZE_M /
+  (METERS_PER_DEG_LAT * Math.cos(GAINESVILLE_FL[0] * Math.PI / 180));
+
+// path: [[col, row], ...] as returned by execute_astar
+
 type MapPoint = {
   lat: number
   lng: number

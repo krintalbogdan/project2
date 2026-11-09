@@ -1,16 +1,37 @@
-const GAINESVILLE_FL = [29.6516, -82.3248]; // center of cell (0, 0)
-const CELL_SIZE_M = 30;                     // meters between cell centers
-const METERS_PER_DEG_LAT = 111320;
+// Grid cells -> [lat, lng] for Leaflet.
+// The grid covers the box between start and end; row 0 = north edge, col 0 = west edge.
 
-const LAT_STEP = CELL_SIZE_M / METERS_PER_DEG_LAT;
-const LNG_STEP = CELL_SIZE_M /
-  (METERS_PER_DEG_LAT * Math.cos(GAINESVILLE_FL[0] * Math.PI / 180));
+// result: [rows, cols, [col, row], [col, row], ...] from execute_astar
+function gridToLatLngs(result, start, end) {
+  const [rows, cols, ...path] = result;
+  if (path.length === 0) return [];
 
-// path: [[col, row], ...] as returned by execute_astar
-function gridToLatLngs(path) {
-  const [lat0, lng0] = GAINESVILLE_FL;
-  return path.map(([col, row]) => [
-    lat0 - row * LAT_STEP,  // each row is one cell further south
-    lng0 + col * LNG_STEP,  // each column is one cell further east
+  // box around start and end
+  const minLat = Math.min(start[0], end[0]), maxLat = Math.max(start[0], end[0]);
+  const minLng = Math.min(start[1], end[1]), maxLng = Math.max(start[1], end[1]);
+
+  // size of one cell in degrees
+  const latStep = (maxLat - minLat) / rows;
+  const lngStep = (maxLng - minLng) / cols;
+
+  // center of cell (0, 0), the north-west cell
+  const lat0 = maxLat - latStep / 2;
+  const lng0 = minLng + lngStep / 2;
+
+  const latlngs = path.map(([col, row]) => [
+    lat0 - row * latStep,  // rows run south
+    lng0 + col * lngStep,  // columns run east
   ]);
+
+  // pin the ends to the exact points
+  latlngs[0] = [start[0], start[1]];
+  latlngs[latlngs.length - 1] = [end[0], end[1]];
+  return latlngs;
 }
+
+// usage:
+// const start = [29.65243, -82.29191];
+// const end = [29.65633, -82.32350];
+// const result = await (await fetch(...)).json();
+// const line = L.polyline(gridToLatLngs(result, start, end), { color: 'red', weight: 4 }).addTo(map);
+// map.fitBounds(line.getBounds());

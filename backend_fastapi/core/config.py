@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///database.db"
     STATIC_URL: str = os.getcwd() + "/static"
 
-    ALLOWED_ORIGINS: str = ""
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:3000" 
+
 
     @field_validator("ALLOWED_ORIGINS")
     def parse_allowed_origins(cls, v: str) -> List[str]:
