@@ -220,40 +220,21 @@ class SRTMElevationData:
 def execute_astar(from_coord, to_coord):
     ee.Initialize(project="vocal-etching-286420")
 
-    # Decrease scale_meters (down to 30) for smaller land equivalent length per cell
-    ele_obj = SRTMElevationData(
-        [
-            from_coord[0],
-            from_coord[1],
-            to_coord[0],
-            to_coord[1],
-        ],
-        scale_meters=30,
-    )
-    converted_heights = np.empty((ele_obj.rows, ele_obj.cols), dtype=np.int32)
+    # box in the order SRTMElevationData expects, whatever direction we're going
+    min_lat, max_lat = sorted((from_coord[0], to_coord[0]))
+    min_lon, max_lon = sorted((from_coord[1], to_coord[1]))
 
-    for i in range(0, ele_obj.rows):
-        for j in range(0, ele_obj.cols):
-            converted_heights[i][j] = ele_obj.data[i][j]
+    # scale_meters sets the cell size (30 = finest SRTM data)
+    ele = SRTMElevationData([min_lat, min_lon, max_lat, max_lon], scale_meters=30)
+    grid = Grid(ele.data)
 
-    # (87, 63) was the bottom-right corner of the 89x65 BRIDGES grid;
-    # use (ele_obj.rows - 2, ele_obj.cols - 2) to span the full higher-res grid
-    if (from_coord[0] < to_coord[0] and from_coord[1] > to_coord[1]):
-        start, goal = (1, 1), (ele_obj.rows - 2, ele_obj.cols - 2)
-    if (from_coord[0] > to_coord[0] and from_coord[1] > to_coord[1]):
-        start, goal = (ele_obj.rows - 2, 1), (1, ele_obj.cols - 2)
-    if (from_coord[0] < to_coord[0] and from_coord[1] < to_coord[1]):
-        start, goal = (1, ele_obj.cols - 2), (ele_obj.rows - 2, 1)
-    if (from_coord[0] > to_coord[0] and from_coord[1] < to_coord[1]):
-            start, goal = (ele_obj.rows - 2, ele_obj.cols - 2), (1, 1)
-    grid = Grid(converted_heights)
-    coords = grid.shortest_path(start, goal)
-    toReturn = []
+    # from/to are box corners, so each maps to a corner cell
+    def corner(lat, lon):
+        return (0 if lat == max_lat else ele.rows - 1,
+                0 if lon == min_lon else ele.cols - 1)
 
-    for elem in grid.path_to(goal):
-        toReturn.append([elem.col, elem.row])
-
-    return toReturn
+    path = grid.shortest_path(corner(*from_coord), corner(*to_coord))
+    return [ele.rows, ele.cols] + [[c, r] for r, c in path]
 
 if __name__ == "__main__":
     ee.Initialize(project="vocal-etching-286420")
