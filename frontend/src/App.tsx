@@ -3,6 +3,18 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents,} from 're
 import { latLng } from 'leaflet' //latLng lets us calculate distances between coordinates
 import 'leaflet/dist/leaflet.css'
 
+
+
+const GAINESVILLE_FL = [29.6516, -82.3248]; // center of cell (0, 0)
+const CELL_SIZE_M = 30;                     // meters between cell centers
+const METERS_PER_DEG_LAT = 111320;
+
+const LAT_STEP = CELL_SIZE_M / METERS_PER_DEG_LAT;
+const LNG_STEP = CELL_SIZE_M /
+  (METERS_PER_DEG_LAT * Math.cos(GAINESVILLE_FL[0] * Math.PI / 180));
+
+// path: [[col, row], ...] as returned by execute_astar
+
 type MapPoint = {
   lat: number
   lng: number
@@ -58,6 +70,34 @@ function App() {
     }
 
   }
+
+function gridToLatLngs(result: Array<Array<number>>, start: Array<number>, end: Array<number>) {
+  const [rows, cols, ...path] = result;
+  if (path.length === 0) return [];
+
+  // box around start and end
+  const minLat = Math.min(start[0], end[0]), maxLat = Math.max(start[0], end[0]);
+  const minLng = Math.min(start[1], end[1]), maxLng = Math.max(start[1], end[1]);
+
+  // size of one cell in degrees
+  const latStep = (maxLat - minLat) / rows;
+  const lngStep = (maxLng - minLng) / cols;
+
+  // center of cell (0, 0), the north-west cell
+  const lat0 = maxLat - latStep / 2;
+  const lng0 = minLng + lngStep / 2;
+
+  const latlngs = path.map(([col, row]) => [
+    lat0 - row * latStep,  // rows run south
+    lng0 + col * lngStep,  // columns run east
+  ]);
+
+  // pin the ends to the exact points
+  latlngs[0] = [start[0], start[1]];
+  latlngs[latlngs.length - 1] = [end[0], end[1]];
+  return latlngs;
+}
+ 
 
   async function findRoute(){//this function hands task to be sent to backend
     if (!start || !end) {
