@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents,} from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMapEvents,} from 'react-leaflet'
 import { latLng } from 'leaflet' //latLng lets us calculate distances between coordinates
 import 'leaflet/dist/leaflet.css'
 
@@ -24,6 +24,60 @@ function MapClicks({ onSelect }: MapClicksProps) {
   return null
 }
 
+type CoordinatePair = [number, number]
+
+// Backend format: [row count, column count, ...grid coordinates].
+type GridResult = [number, number, ...CoordinatePair[]]
+
+function gridToLatLngs(
+  result: GridResult,
+  start: CoordinatePair,
+  end: CoordinatePair,
+): CoordinatePair[] {
+  const [rows, cols, ...path] = result
+
+  if (rows <= 0 || cols <= 0 || path.length === 0) {
+    return []
+  }
+
+  // Find the geographic box between the selected points.
+  const minLat = Math.min(start[0], end[0])
+  const maxLat = Math.max(start[0], end[0])
+  const minLng = Math.min(start[1], end[1])
+  const maxLng = Math.max(start[1], end[1])
+
+  // Estimate the geographic size of each grid cell.
+  const latStep = (maxLat - minLat) / rows
+  const lngStep = (maxLng - minLng) / cols
+
+  // Estimate the center of the north-west cell.
+  const lat0 = maxLat - latStep / 2
+  const lng0 = minLng + lngStep / 2
+
+  // Convert each [column, row] into [latitude, longitude].
+  const latlngs: CoordinatePair[] = path.map(([col, row]) => [
+    lat0 - row * latStep,
+    lng0 + col * lngStep,
+  ])
+
+  // Connect the route ends to the exact selected locations.
+  // A single-cell path needs both endpoints added explicitly.
+  if (latlngs.length === 1) {
+    return [start, end]
+  }
+
+  latlngs[0] = start
+  latlngs[latlngs.length - 1] = end
+
+  return latlngs
+}
+
+//the expected response from /process_query.
+type RouteResult = {
+  status: string
+  path: GridResult
+}
+
 function App() {
   const [start, setStart] = useState<MapPoint | null>(null)//MapPoint | null means "a location OR no selection yet.
   const [end, setEnd] = useState<MapPoint | null>(null)
@@ -33,6 +87,9 @@ function App() {
   const [apiMessage, setApiMessage] = useState('')
   //track whether a request is running to prevent repeated clicks.
   const [loading, setLoading] = useState(false)
+
+  //store the converted route points. An empty array means no line yet.
+  const [route, setRoute] = useState<CoordinatePair[]>([])
 
   function selectPoint(point: MapPoint) {//runs when mapclicks gives clicked location
     if (!start) {
@@ -59,52 +116,103 @@ function App() {
 
   }
 
-  async function findRoute(){//this function hands task to be sent to backend
-    if (!start || !end) {
-      setError('Select both points first.')
-      return
-    }
+async function findRoute() {
+  if (!start || !end || loading) {
+    return
+  }
 
-    setLoading(true)
-    setError('')
-    setApiMessage('Sending request...')
+  setLoading(true)
+  setError('')
+  setRoute([])
+  setApiMessage('Creating route request...')
 
-    try{
-      // fetch sends an HTTP request, and await waits for the response without freezing the page.
-      const response = await fetch(
-      'http://127.0.0.1:8000/api/clone/create',{
-        method: 'POST',//standard syntax for HTTP request
+  try {
+    // First, ask the backend to create a pathfinding job.
+    const response = await fetch(
+      'http://127.0.0.1:8000/api/clone/create',
+      {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-
-        //JSON.stringify converts this object into JSON text.
         body: JSON.stringify({
           from_coord: [start.lat, start.lng],
           to_coord: [end.lat, end.lng],
-          algorithm: algorithm,
+          algorithm,
         }),
       },
     )
 
     if (!response.ok) {
-      throw new Error(`Backend returned HTTP ${response.status}`)
+      throw new Error(`Creating job failed: HTTP ${response.status}`)
     }
 
-    const job = await response.json()//should contain job ID
-    setApiMessage(`Job created with ID: ${job.id}`)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Request failed', )//this is to handle connection errors
-      setApiMessage('')
-    } finally {
-      setLoading(false)
+    const job: { id: number } = await response.json()
+
+    //check progress every two seconds, up to 60 times.
+    //"await" lets the page stay responsive while we wait.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      setApiMessage(`Calculating route - job ${job.id}...`)
+
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      const queryResponse = await fetch(
+        'http://127.0.0.1:8000/api/clone/process_query',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: job.id }),
+        },
+      )
+
+      if (!queryResponse.ok) {
+        throw new Error(
+          `Checking route failed: HTTP ${queryResponse.status}`,
+        )
+      }
+
+      const result: RouteResult = await queryResponse.json()
+
+      if (result.status === 'complete') {
+        if (!result.path || result.path.length < 2) {
+          throw new Error('The backend returned no drawable route.')
+        }
+
+        //convert the grid coordinates using tomas's function.
+        setRoute(
+          gridToLatLngs(
+            result.path,
+           [start.lat, start.lng],
+            [end.lat, end.lng],
+          ),
+        )
+        setApiMessage('Route received. Check the blue line on the map.')
+        return
+      }
+
+      if (result.status === 'failed') {
+        throw new Error('The backend could not calculate this route.')
+      }
     }
+  } catch (error) {
+    setError(
+      error instanceof Error ? error.message : 'Request failed',
+    )
+    setApiMessage('')
+  } finally {
+    //allow another request after completion or an error.
+    setLoading(false)
   }
+}
 
   function resetPoints() {
     setStart(null)
     setEnd(null)
+    setRoute([]) //remove the previous route.
     setError('')
+    setApiMessage('')
   }//reset function for reset button
 
   //remember this format "condition ? valueIfTrue : valueIfFalse"
@@ -125,7 +233,7 @@ function App() {
             : 'Both points selected. Click Reset to choose again.'}
       </p>
 
-      <button type="button" onClick={resetPoints}>
+      <button type="button" onClick={resetPoints} disabled={loading}>
         Reset points
       </button>
 
@@ -136,6 +244,7 @@ function App() {
         <select
           id="algorithm"
           value={algorithm}
+          disabled={loading}
           onChange={(event) => setAlgorithm(event.target.value)}
         >
           <option value="astar">A*</option>
@@ -194,6 +303,14 @@ function App() {
 
         {/* When the map is clicked, MapClicks calls selectPoint. */}
         <MapClicks onSelect={selectPoint} />
+
+        {/* Connect the converted route points with a blue line. */}
+        {route.length > 1 && (
+         <Polyline
+           positions={route}
+            pathOptions={{ color: 'blue', weight: 5 }}
+         />
+        )}
 
         {/* Show the green circle only after a start is selected. Learned syntax from researching on google*/}
         {start && (
