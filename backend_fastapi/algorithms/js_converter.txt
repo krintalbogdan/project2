@@ -1,0 +1,16 @@
+const GAINESVILLE_FL = [29.6516, -82.3248]; // center of cell (0, 0)
+const CELL_SIZE_M = 30;                     // meters between cell centers
+const METERS_PER_DEG_LAT = 111320;
+
+const LAT_STEP = CELL_SIZE_M / METERS_PER_DEG_LAT;
+const LNG_STEP = CELL_SIZE_M /
+  (METERS_PER_DEG_LAT * Math.cos(GAINESVILLE_FL[0] * Math.PI / 180));
+
+// path: [[col, row], ...] as returned by execute_astar
+function gridToLatLngs(path) {
+  const [lat0, lng0] = GAINESVILLE_FL;
+  return path.map(([col, row]) => [
+    lat0 - row * LAT_STEP,  // each row is one cell further south
+    lng0 + col * LNG_STEP,  // each column is one cell further east
+  ]);
+}
